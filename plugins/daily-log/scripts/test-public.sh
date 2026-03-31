@@ -298,6 +298,89 @@ else
 fi
 rm -rf "$TEST_DIR"
 
+# --- on-prompt.sh tests ---
+
+run_test "on-prompt.sh records prompt"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+echo '{"prompt": "hello world", "cwd": "/tmp/test", "session_id": "test-sess"}' \
+  | "$SCRIPT_DIR/on-prompt.sh"
+
+if [ -f "$DAILY_LOG_DIR/prompts.jsonl" ]; then
+    python -c "
+import json
+with open('$DAILY_LOG_DIR/prompts.jsonl') as f:
+    entry = json.loads(f.readline())
+    assert entry['type'] == 'prompt'
+    assert entry['content'] == 'hello world'
+    assert entry['cwd'] == '/tmp/test'
+    assert 'env' not in entry, 'env field should not exist'
+" && pass "records prompt correctly" || fail "prompt content mismatch"
+else
+    fail "prompts.jsonl not created"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "on-prompt.sh first run sets last_date"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+echo '{"prompt": "first prompt", "cwd": "/tmp", "session_id": "s1"}' \
+  | "$SCRIPT_DIR/on-prompt.sh"
+
+if [ -f "$DAILY_LOG_DIR/last_date" ]; then
+    TODAY=$(date '+%Y-%m-%d')
+    SAVED=$(cat "$DAILY_LOG_DIR/last_date")
+    if [ "$SAVED" = "$TODAY" ]; then
+        pass "first run sets last_date to today"
+    else
+        fail "last_date is '$SAVED', expected '$TODAY'"
+    fi
+else
+    fail "last_date not created"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "on-prompt.sh skips empty prompt"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+echo '{"prompt": "", "cwd": "/tmp", "session_id": "s1"}' \
+  | "$SCRIPT_DIR/on-prompt.sh"
+
+if [ ! -f "$DAILY_LOG_DIR/prompts.jsonl" ]; then
+    pass "skips empty prompt"
+else
+    fail "should not record empty prompt"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "on-prompt.sh no config emits error on date change"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+# Set last_date to yesterday
+echo "2020-01-01" > "$DAILY_LOG_DIR/last_date"
+
+OUTPUT=$(echo '{"prompt": "test", "cwd": "/tmp", "session_id": "s1"}' \
+  | "$SCRIPT_DIR/on-prompt.sh" 2>/dev/null)
+
+if echo "$OUTPUT" | grep -q "Config not found"; then
+    pass "emits error when config missing on date change"
+else
+    fail "should emit config not found error"
+fi
+rm -rf "$TEST_DIR"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
