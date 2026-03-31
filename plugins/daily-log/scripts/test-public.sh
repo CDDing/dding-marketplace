@@ -142,8 +142,7 @@ CONF
 
 touch "$DAILY_LOG_DIR/prompts.jsonl"
 
-"$SCRIPT_DIR/send-to-server.sh" 2>/dev/null
-if [ $? -eq 0 ]; then
+if "$SCRIPT_DIR/send-to-server.sh" 2>/dev/null; then
     pass "skips empty prompts file"
 else
     fail "should succeed with empty prompts"
@@ -378,6 +377,57 @@ if echo "$OUTPUT" | grep -q "Config not found"; then
     pass "emits error when config missing on date change"
 else
     fail "should emit config not found error"
+fi
+rm -rf "$TEST_DIR"
+
+# --- additional coverage tests ---
+
+run_test "send-to-server.sh resend mode"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+QUEUE_DIR="${DAILY_LOG_DIR}/queue"
+mkdir -p "$QUEUE_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "server",
+  "server_url": "http://localhost:19999/api/submit",
+  "server_headers": {}
+}
+CONF
+
+# Pre-populate queue with a file
+echo '{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/tmp","session_id":"s1","content":"queued item"}' \
+  > "$QUEUE_DIR/20260330_100000.jsonl"
+
+OUTPUT=$("$SCRIPT_DIR/send-to-server.sh" resend 2>/dev/null || true)
+if echo "$OUTPUT" | grep -q "0 sent, 1 failed"; then
+    pass "resend mode reports failed items"
+else
+    fail "resend mode output unexpected: $OUTPUT"
+fi
+
+# Queue file should still exist (send failed)
+if [ -f "$QUEUE_DIR/20260330_100000.jsonl" ]; then
+    pass "resend keeps queue file on failure"
+else
+    fail "queue file was deleted despite send failure"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "summarize-local.sh exits with error when no config"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+mkdir -p "${TEST_DIR}/.claude/daily-log"
+echo '{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/tmp","session_id":"s1","content":"test"}' \
+  > "${TEST_DIR}/.claude/daily-log/prompts.jsonl"
+
+OUTPUT=$("$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null || true)
+if echo "$OUTPUT" | grep -q "config.json not found"; then
+    pass "summarize-local.sh reports missing config"
+else
+    fail "should report missing config"
 fi
 rm -rf "$TEST_DIR"
 

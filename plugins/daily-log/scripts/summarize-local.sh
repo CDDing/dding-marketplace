@@ -90,6 +90,12 @@ entry = json.loads(sys.stdin.read())
 print(entry['ts'][:10])
 " 2>/dev/null)
 
+if [ -z "$LOG_DATE" ]; then
+    emit_error "[daily-log] Could not extract date from prompts."
+    rm -f "$WORK_FILE"
+    exit 1
+fi
+
 # cwd별 워크스페이스 분할 + raw log 생성
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -143,15 +149,15 @@ for raw_file in "$TMPDIR"/*.raw; do
     base=$(basename "$raw_file" .raw)
     meta_file="$TMPDIR/${base}.meta"
 
-    WS_NAME=$(python -c "
-import json
-with open('$meta_file') as f:
+    WS_NAME=$(META_FILE="$meta_file" python -c "
+import json, os
+with open(os.environ['META_FILE']) as f:
     print(json.load(f)['ws_name'])
 " 2>/dev/null)
 
-    TIME_RANGE=$(python -c "
-import json
-with open('$meta_file') as f:
+    TIME_RANGE=$(META_FILE="$meta_file" python -c "
+import json, os
+with open(os.environ['META_FILE']) as f:
     print(json.load(f)['time_range'])
 " 2>/dev/null)
 

@@ -67,4 +67,6 @@ entry = {
 }
 print(json.dumps(entry, ensure_ascii=False))
 " >> "$PROMPTS_FILE"
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    trap - EXIT
 fi
