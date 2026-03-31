@@ -1,0 +1,9 @@
+{
+  "name": "daily-log",
+  "description": "Automatically log and summarize your daily Claude Code activity. Supports local-only and server modes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "CDDing"
+  },
+  "license": "MIT"
+}
