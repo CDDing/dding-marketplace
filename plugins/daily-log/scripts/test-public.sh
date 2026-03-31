@@ -81,6 +81,75 @@ else
 fi
 rm -rf "$TEST_DIR"
 
+# --- send-to-server.sh tests ---
+
+run_test "send-to-server.sh fails gracefully when server unreachable"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+QUEUE_DIR="${DAILY_LOG_DIR}/queue"
+mkdir -p "$DAILY_LOG_DIR" "$QUEUE_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "server",
+  "server_url": "http://localhost:19999/api/submit",
+  "server_headers": {
+    "Authorization": "Bearer test-token",
+    "X-Custom": "hello"
+  }
+}
+CONF
+
+echo '{"ts":"2026-03-31T10:00:00+09:00","type":"prompt","cwd":"/tmp","session_id":"s1","content":"test"}' \
+  > "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/send-to-server.sh" 2>/dev/null || true
+
+if ls "$QUEUE_DIR"/*.jsonl 1>/dev/null 2>&1; then
+    pass "failed send moves to queue"
+else
+    fail "queue file not created on send failure"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "send-to-server.sh exits when no config"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+mkdir -p "${TEST_DIR}/.claude/daily-log"
+
+OUTPUT=$("$SCRIPT_DIR/send-to-server.sh" 2>/dev/null || true)
+if echo "$OUTPUT" | grep -q "config.json not found"; then
+    pass "reports missing config"
+else
+    fail "should report missing config"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "send-to-server.sh skips empty prompts file"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "server",
+  "server_url": "http://localhost:19999/api/submit",
+  "server_headers": {}
+}
+CONF
+
+touch "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/send-to-server.sh" 2>/dev/null
+if [ $? -eq 0 ]; then
+    pass "skips empty prompts file"
+else
+    fail "should succeed with empty prompts"
+fi
+rm -rf "$TEST_DIR"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
