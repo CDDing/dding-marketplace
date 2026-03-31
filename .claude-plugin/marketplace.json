@@ -1,0 +1,16 @@
+{
+  "name": "dding-marketplace",
+  "owner": { "name": "CDDing" },
+  "metadata": {
+    "description": "CDDing's Claude Code Plugin Marketplace",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "daily-log",
+      "source": "./plugins/daily-log",
+      "description": "Automatically log and summarize your daily Claude Code activity. Supports local-only and server modes.",
+      "version": "1.0.0"
+    }
+  ]
+}
