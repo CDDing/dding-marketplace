@@ -150,6 +150,154 @@ else
 fi
 rm -rf "$TEST_DIR"
 
+# --- summarize-local.sh tests ---
+
+run_test "summarize-local.sh dry-run creates summary file"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "local",
+  "summary_path": "",
+  "after_summary": "delete",
+  "model": "haiku"
+}
+CONF
+
+cat > "$DAILY_LOG_DIR/prompts.jsonl" << 'JSONL'
+{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/home/user/project-a","session_id":"s1","content":"working on feature A"}
+{"ts":"2026-03-30T10:05:00+09:00","type":"response","cwd":"/home/user/project-a","session_id":"s1","content":"done with feature A"}
+{"ts":"2026-03-30T11:00:00+09:00","type":"prompt","cwd":"/home/user/project-b","session_id":"s2","content":"fixing bug in project B"}
+JSONL
+
+"$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null
+
+SUMMARY_FILE="${DAILY_LOG_DIR}/summaries/2026/03/2026-03-30.md"
+if [ -f "$SUMMARY_FILE" ]; then
+    # Check it has the header and both workspaces
+    if grep -q "# 2026-03-30 Daily Log" "$SUMMARY_FILE" && \
+       grep -q "project-a" "$SUMMARY_FILE" && \
+       grep -q "project-b" "$SUMMARY_FILE"; then
+        pass "dry-run creates summary with both workspaces"
+    else
+        fail "summary file missing expected content"
+        cat "$SUMMARY_FILE"
+    fi
+else
+    fail "summary file not created"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "summarize-local.sh dry-run with delete removes original"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "local",
+  "summary_path": "",
+  "after_summary": "delete",
+  "model": "haiku"
+}
+CONF
+
+echo '{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/tmp/proj","session_id":"s1","content":"test"}' \
+  > "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null
+
+if [ ! -f "$DAILY_LOG_DIR/.summarizing.jsonl" ] && [ ! -f "$DAILY_LOG_DIR/prompts.jsonl" ]; then
+    pass "delete mode removes original after summarization"
+else
+    fail "original file still exists after delete mode"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "summarize-local.sh dry-run with archive moves original"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "local",
+  "summary_path": "",
+  "after_summary": "archive",
+  "model": "haiku"
+}
+CONF
+
+echo '{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/tmp/proj","session_id":"s1","content":"test"}' \
+  > "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null
+
+if [ -f "$DAILY_LOG_DIR/archive/2026-03-30.jsonl" ]; then
+    pass "archive mode moves original to archive/"
+else
+    fail "archive file not found"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "summarize-local.sh custom summary_path"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+CUSTOM_PATH="${TEST_DIR}/my-notes"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << CONF
+{
+  "mode": "local",
+  "summary_path": "${CUSTOM_PATH}",
+  "after_summary": "delete",
+  "model": "haiku"
+}
+CONF
+
+echo '{"ts":"2026-03-30T10:00:00+09:00","type":"prompt","cwd":"/tmp/proj","session_id":"s1","content":"test"}' \
+  > "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null
+
+if [ -f "${CUSTOM_PATH}/2026/03/2026-03-30.md" ]; then
+    pass "custom summary_path works"
+else
+    fail "summary not found at custom path"
+fi
+rm -rf "$TEST_DIR"
+
+run_test "summarize-local.sh skips empty prompts"
+TEST_DIR=$(mktemp -d)
+export HOME="$TEST_DIR"
+DAILY_LOG_DIR="${TEST_DIR}/.claude/daily-log"
+mkdir -p "$DAILY_LOG_DIR"
+
+cat > "$DAILY_LOG_DIR/config.json" << 'CONF'
+{
+  "mode": "local",
+  "summary_path": "",
+  "after_summary": "delete",
+  "model": "haiku"
+}
+CONF
+
+touch "$DAILY_LOG_DIR/prompts.jsonl"
+
+"$SCRIPT_DIR/summarize-local.sh" --dry-run 2>/dev/null
+if [ $? -eq 0 ]; then
+    pass "skips empty prompts file"
+else
+    fail "should succeed with empty prompts"
+fi
+rm -rf "$TEST_DIR"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
