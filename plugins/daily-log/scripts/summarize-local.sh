@@ -19,13 +19,13 @@ emit_error() {
     echo "{\"systemMessage\": \"$1\"}"
 }
 
-# config 읽기
-if [ ! -f "$CONFIG_FILE" ]; then
-    emit_error "[daily-log] config.json not found. Run /daily-log setup first."
-    exit 1
-fi
+# config 읽기 (없으면 기본값)
+SUMMARY_PATH="${HOME}/.claude/daily-log/summaries"
+AFTER_SUMMARY="archive"
+MODEL="haiku"
 
-SUMMARY_PATH=$(CONFIG_PATH="$CONFIG_FILE" python -c "
+if [ -f "$CONFIG_FILE" ]; then
+    SUMMARY_PATH=$(CONFIG_PATH="$CONFIG_FILE" python -c "
 import json, os
 with open(os.environ['CONFIG_PATH'], encoding='utf-8') as f:
     c = json.load(f)
@@ -35,19 +35,23 @@ with open(os.environ['CONFIG_PATH'], encoding='utf-8') as f:
     else:
         p = os.path.expanduser(p)
     print(p)
-" 2>/dev/null)
+" 2>/dev/null || echo "${HOME}/.claude/daily-log/summaries")
 
-AFTER_SUMMARY=$(CONFIG_PATH="$CONFIG_FILE" python -c "
+    AFTER_SUMMARY=$(CONFIG_PATH="$CONFIG_FILE" python -c "
 import json, os
 with open(os.environ['CONFIG_PATH'], encoding='utf-8') as f:
     print(json.load(f).get('after_summary', 'archive'))
-" 2>/dev/null)
+" 2>/dev/null || echo "archive")
 
-MODEL=$(CONFIG_PATH="$CONFIG_FILE" python -c "
+    MODEL=$(CONFIG_PATH="$CONFIG_FILE" python -c "
 import json, os
 with open(os.environ['CONFIG_PATH'], encoding='utf-8') as f:
     print(json.load(f).get('model', 'haiku'))
-" 2>/dev/null)
+" 2>/dev/null || echo "haiku")
+fi
+
+# 커스텀 요약 프롬프트 파일 경로
+CUSTOM_PROMPT_FILE="${DAILY_LOG_DIR}/summary-prompt.md"
 
 # lock 획득
 LOCK_RETRIES=10
@@ -165,7 +169,19 @@ with open(os.environ['META_FILE']) as f:
 
     # 요약 프롬프트 생성
     PROMPT_FILE="$TMPDIR/${base}.prompt"
-    cat > "$PROMPT_FILE" << PROMPT_EOF
+    if [ -f "$CUSTOM_PROMPT_FILE" ]; then
+        # 커스텀 프롬프트 사용: {{WS_NAME}}, {{TIME_RANGE}}, {{RAW_LOG}} 치환
+        WS_NAME="$WS_NAME" TIME_RANGE="$TIME_RANGE" RAW_LOG="$RAW_LOG" CUSTOM_PATH="$CUSTOM_PROMPT_FILE" python -c "
+import os
+with open(os.environ['CUSTOM_PATH'], encoding='utf-8') as f:
+    tpl = f.read()
+tpl = tpl.replace('{{WS_NAME}}', os.environ['WS_NAME'])
+tpl = tpl.replace('{{TIME_RANGE}}', os.environ['TIME_RANGE'])
+tpl = tpl.replace('{{RAW_LOG}}', os.environ['RAW_LOG'])
+print(tpl)
+" > "$PROMPT_FILE"
+    else
+        cat > "$PROMPT_FILE" << PROMPT_EOF
 You are a work log summarizer. Summarize the following work log concisely.
 
 Rules:
@@ -186,6 +202,7 @@ ${RAW_LOG}
 
 Summarize the above work log. Output only the summary.
 PROMPT_EOF
+    fi
 
     if $DRY_RUN; then
         WS_SUMMARY="### ${WS_NAME} — ${TIME_RANGE}

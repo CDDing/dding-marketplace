@@ -96,19 +96,17 @@ if [ -z "$LAST_DATE" ]; then
 fi
 
 # === 3단계: config 확인 후 모드별 분기 ===
-if [ ! -f "$CONFIG_FILE" ]; then
-    emit_error "[daily-log] Config not found. Run /daily-log setup first."
-    exit 0
-fi
-
 echo "$TODAY" > "$LAST_DATE_FILE"
 
-# mode 읽기
-MODE=$(CONFIG_PATH="$CONFIG_FILE" python -c "
+# mode 읽기 (config 없으면 local 기본값)
+MODE="local"
+if [ -f "$CONFIG_FILE" ]; then
+    MODE=$(CONFIG_PATH="$CONFIG_FILE" python -c "
 import json, os
 with open(os.environ['CONFIG_PATH'], encoding='utf-8') as f:
     print(json.load(f).get('mode', 'local'))
 " 2>/dev/null || echo "local")
+fi
 
 if [ "$MODE" = "server" ]; then
     "$SCRIPT_DIR/send-to-server.sh"

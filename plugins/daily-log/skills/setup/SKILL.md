@@ -6,64 +6,91 @@ allowed-tools: Read, Write, Bash(curl:*), Bash(mkdir:*), AskUserQuestion
 # Daily Log Setup
 
 Follow this flow step by step.
+All user questions MUST use the AskUserQuestion tool.
 
-## Step 1: Mode Selection
+## Step 1: Show Defaults
 
-Ask the user to choose a mode:
+Show the user the default configuration:
 
-- **local** — Summarize logs locally using Claude CLI. No server needed.
-- **server** — Send logs to an external server for processing.
+> **기본 설정값:**
+> - mode: `local` (로컬에서 Claude CLI로 요약)
+> - summary_path: `~/.claude/daily-log/summaries`
+> - after_summary: `archive` (요약 후 원본을 archive/로 이동)
+> - model: `haiku`
 
-## Step 2 (local mode): Local Settings
+Ask: "이대로 설정할까요? (Yes / No — 커스텀)"
 
-Ask the following one at a time:
+- **Yes** → Step 3 (save with all defaults)
+- **No** → Step 2
 
-1. **summary_path** — Where to save summary markdown files.
-   Default: `~/.claude/daily-log/summaries`
-2. **after_summary** — What to do with raw logs after summarization.
-   Options: `archive` (move to archive/) or `delete`
-   Default: `archive`
-3. **model** — Claude model to use for summarization.
-   Default: `haiku`
+## Step 2: Custom Settings
 
-Save to `~/.claude/daily-log/config.json`:
+### 2-1. mode
 
-```json
-{
-  "mode": "local",
-  "summary_path": "<user input or default>",
-  "after_summary": "<archive or delete>",
-  "model": "<model>"
-}
-```
+Ask: "모드를 선택하세요: `local` (로컬 요약) / `server` (외부 서버 전송)"
 
-## Step 2 (server mode): Server Settings
+- **local** → 2-2로
+- **server** → 2-5로
 
-Ask the following one at a time:
+### 2-2. summary_path
 
-1. **server_url** — The URL to send logs to (e.g., `https://my-server.com/api/submit`)
-2. **server_headers** — Custom HTTP headers to include with requests (e.g., authentication).
-   Ask: "Do you need to send any custom HTTP headers? (e.g., Authorization: Bearer <token>)"
-   If yes, collect key-value pairs. If no, use empty `{}`.
+Ask: "요약 파일 저장 경로를 입력하세요. (기본값: `~/.claude/daily-log/summaries`)"
 
-Verify connectivity:
+### 2-3. after_summary
+
+Ask: "요약 후 원본 로그를 어떻게 처리할까요? `archive` (보관) / `delete` (삭제) (기본값: `archive`)"
+
+### 2-4. model
+
+Ask: "요약에 사용할 Claude 모델을 입력하세요. (기본값: `haiku`)"
+
+→ Step 3으로
+
+### 2-5. server_url
+
+Ask: "로그를 전송할 서버 URL을 입력하세요. (예: `https://my-server.com/api/submit`)"
+
+### 2-6. server_headers
+
+Ask: "커스텀 HTTP 헤더가 필요합니까? (예: 인증 토큰 등)"
+
+- **No** → headers = `{}`
+- **Yes** → "~/.claude/daily-log/config.json 의 `server_headers` 필드를 직접 편집하세요." 안내
+
+### 2-7. Server connectivity check
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" --max-time 5 "<server_url>"
 ```
 
-If the server responds, save config. If not, warn and ask to retry or save anyway.
+- 응답 있음 → Step 3
+- 실패 → 경고 후 "그래도 저장할까요?" 확인
 
-Save to `~/.claude/daily-log/config.json`:
+## Step 3: Save
 
+Save to `~/.claude/daily-log/config.json`.
+
+Local mode:
 ```json
 {
-  "mode": "server",
-  "server_url": "<user input>",
-  "server_headers": { "<key>": "<value>", ... }
+  "mode": "local",
+  "summary_path": "<value>",
+  "after_summary": "<value>",
+  "model": "<value>"
 }
 ```
 
-## Step 3: Confirmation
+Server mode:
+```json
+{
+  "mode": "server",
+  "server_url": "<value>",
+  "server_headers": {}
+}
+```
 
-Show the saved config and confirm setup is complete.
+## Step 4: Post-setup guide
+
+Show:
+- "설정이 저장되었습니다: `~/.claude/daily-log/config.json`"
+- Local mode인 경우: "요약 프롬프트를 커스텀하려면 이 파일을 편집하세요: `~/.claude/daily-log/summary-prompt.md`"
