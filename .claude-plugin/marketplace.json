@@ -11,6 +11,12 @@
       "source": "./plugins/daily-log",
       "description": "Automatically log and summarize your daily Claude Code activity. Supports local-only and server modes.",
       "version": "1.0.0"
+    },
+    {
+      "name": "superpower-validate",
+      "source": "./plugins/superpower-validate",
+      "description": "Adversarial spec/plan validation workflow (superpowers companion) — fan-out review across dimensions, 3-vote adversarial verification, PASS/FAIL verdict, web-checks external dependencies. Validates only; never authors. Generic and project-agnostic.",
+      "version": "0.1.0"
     }
   ]
 }

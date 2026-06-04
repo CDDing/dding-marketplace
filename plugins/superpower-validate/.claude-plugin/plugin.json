@@ -1,0 +1,9 @@
+{
+  "name": "superpower-validate",
+  "description": "Spec/Plan 적대적 검증 워크플로우 (superpowers 동반) — 차원별 팬아웃 리뷰 → 3표 적대 검증 → PASS/FAIL 판정, 외부 의존성 웹 교차검증. 작성은 안 하고 검증만. 범용/프로젝트 무관.",
+  "version": "0.1.0",
+  "author": {
+    "name": "CDDing"
+  },
+  "repository": "https://github.com/CDDing/dding-marketplace"
+}
