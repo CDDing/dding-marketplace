@@ -43,28 +43,46 @@ ESC ] 777 ; notify ; warp://cli-agent ; {"v":1,"agent":"claude","event":"stop",.
 
 훅 6개가 전부 같은 디스패처(`hooks/warp-cli-agent.js`)를 가리키고, stdin으로 들어오는 `hook_event_name`을 보고 분기한다.
 
-| Claude Code 훅 | 프로토콜 이벤트 | Warp가 카드 본문에 쓰는 필드 |
+| Claude Code 훅 | 프로토콜 이벤트 | Warp가 카드에 쓰는 필드 |
 |---|---|---|
 | `SessionStart` | `session_start` | — |
 | `UserPromptSubmit` | `prompt_submit` | `query` (내 프롬프트) |
 | `PostToolUse` | `tool_complete` | — |
 | `PermissionRequest` | `permission_request` | `summary` |
 | `Notification` (`idle_prompt`) | `idle_prompt` | `summary` |
-| `Stop` | `stop` | `query` (**Claude 응답의 첫 줄**) |
+| `Stop` | `stop` | `query` |
 
 모든 페이로드는 6필드 봉투를 공유한다: `v`, `agent`, `event`, `session_id`, `cwd`, `project`.
 
+### 카드에 세션명이 뜬다
+
+알림 카드는 편집 가능한 자리가 **한 칸**뿐이지만 그 안의 개행은 살아 있다. 그래서 첫 줄에 세션 이름, 둘째 줄에 내용을 넣는다.
+
+```
+Warp 터미널에서 Windows 알림 설정      ← 세션 이름
+훅은 정상 실행됐고 시퀀스도 나갔습니다.  ← Claude 응답의 첫 줄
+Task Completed                        ← Warp가 붙이는 고정 문구
+```
+
+세션 여러 개를 동시에 돌릴 때 **어느 세션이 부르는지**가 내용보다 중요하다. 승인 요청과 입력 대기 카드도 같은 방식으로 이름을 붙인다.
+
+이름은 Claude Code가 transcript에 남기는 `{"type":"ai-title","aiTitle":"..."}` 줄에서 읽는다. 파일이 수 MB까지 커지므로 **끝 256KB만** 읽고 뒤에서부터 스캔한다. 세션이 아직 이름을 못 받았으면 작업 폴더 이름으로 대신한다.
+
 ### 알아둘 것
 
-**카드 제목은 못 바꾼다.** `Task Completed` 같은 문구는 Warp가 `event` 값을 보고 고른다. 프로토콜에 제목 필드가 없다.
+아래는 문서가 아니라 **실제 Warp에 신호를 쏴서 확인한 것**이다. 일부는 공식 문서와 어긋난다.
+
+**카드 제목은 못 바꾼다.** `Task Completed` 같은 문구는 Warp가 `event` 값을 보고 고른다. 프로토콜 전체를 훑어도 제목 필드가 없다 — 필드는 `v`, `agent`, `event`, `session_id`, `cwd`, `project`, `plugin_version`, `query`, `response`, `transcript_path`, `summary`, `tool_name`, `tool_input` 열세 개가 전부다.
 
 **탭 제목도 못 바꾼다.** Warp가 CLI-agent 세션의 탭 이름을 앱 내부에서 관리한다 ([warp#11970](https://github.com/warpdotdev/warp/issues/11970)). 훅이 보낸 OSC 2는 무시된다.
 
-**`stop` 카드 본문에는 `query`만 쓰인다.** `response`, `project`, 그 외 어떤 필드를 넣어도 카드에 나타나지 않는다. 그래서 이 플러그인은 Claude 응답의 첫 줄을 `query`에 담는다.
+**이벤트마다 카드에 쓰이는 필드는 하나뿐이다.** `stop`은 `query`만 읽는다. `response`를 넣어도 나타나지 않는다. 그래서 이 플러그인은 `response`를 아예 보내지 않고 Claude 응답의 첫 줄을 `query`에 담는다. 공식 플러그인은 같은 자리에 사용자의 마지막 프롬프트를 넣는다.
 
-**시퀀스는 하나만 보낼 수 있다.** `terminalSequence`에 OSC 시퀀스를 두 개 이어붙이면 Claude Code가 필드 전체를 버린다. 문서상 허용된 OSC 2를 OSC 777 앞에 붙이면 알림까지 같이 사라진다.
+**`permission_request`와 `idle_prompt`는 `summary`가 두 줄 모두를 채운다.** 같은 문자열이 위아래로 반복된다. Warp의 렌더링 방식이라 피할 수 없다.
 
-위 네 가지는 문서가 아니라 **실제 Warp에 신호를 쏴서 확인한 것**이다.
+**시퀀스는 하나만 보낼 수 있다.** `terminalSequence`에 OSC 시퀀스를 두 개 이어붙이면 Claude Code가 필드 전체를 버린다. 문서상 허용된 OSC 2를 OSC 777 앞에 붙이면 알림까지 같이 사라진다. 반면 OSC 777끼리는 이어붙여도 둘 다 발사된다.
+
+**토스트는 두 개까지만 보인다.** 더 오면 오래된 것이 밀려난다. 밀려난 카드는 Warp 우측 상단의 **알림함**에 쌓인다.
 
 ## 조용히 아무것도 안 하는 경우
 

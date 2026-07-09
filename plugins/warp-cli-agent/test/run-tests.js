@@ -2,6 +2,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -9,6 +11,8 @@ const HOOK = path.join(__dirname, '..', 'hooks', 'warp-cli-agent.js');
 const ESC = '\x1b';
 const BEL = '\x07';
 const PREFIX = `${ESC}]777;notify;warp://cli-agent;`;
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'warp-cli-agent-'));
 
 function run(hookInput, env) {
   return execFileSync(process.execPath, [HOOK], {
@@ -27,10 +31,14 @@ function payloadOf(stdout) {
   assert.ok(seq.startsWith(PREFIX), 'sequence must be addressed to warp://cli-agent');
   assert.strictEqual(seq.at(-1), BEL, 'sequence must end with BEL');
 
-  // Probing showed Warp drops the whole field when it carries more than one
-  // sequence, so a stray ESC or BEL in user text would silently kill notifications.
+  // Probing showed Warp drops the whole field when it carries more than one sequence,
+  // so a stray ESC or BEL in user text would silently kill notifications.
   assert.strictEqual(seq.split(ESC).length - 1, 1, 'exactly one ESC');
   assert.strictEqual(seq.split(BEL).length - 1, 1, 'exactly one BEL');
+
+  // Warp's docs warn that a raw newline breaks an OSC payload. Newlines we put in a
+  // field must survive as the two characters backslash-n, not as a line break.
+  assert.ok(!seq.includes('\n'), 'no raw newline may reach the terminal');
 
   return JSON.parse(seq.slice(PREFIX.length, -1));
 }
@@ -44,7 +52,17 @@ function assertEnvelope(payload, event) {
   assert.strictEqual(payload.project, 'my-project');
 }
 
-const base = { session_id: 'sess-1', cwd: 'C:/repos/my-project', transcript_path: 'C:/t.jsonl' };
+function writeTranscript(name, lines) {
+  const file = path.join(tmp, name);
+  fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
+  return file;
+}
+
+const aiTitle = (title) => JSON.stringify({ type: 'ai-title', aiTitle: title, sessionId: 'sess-1' });
+const chatter = (i) => JSON.stringify({ type: 'assistant', message: { content: `filler ${i}` } });
+
+// No transcript on disk, so the session name falls back to the project.
+const base = { session_id: 'sess-1', cwd: 'C:/repos/my-project', transcript_path: path.join(tmp, 'absent.jsonl') };
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
@@ -54,7 +72,7 @@ test('SessionStart -> session_start', () => {
   assert.strictEqual(typeof payload.plugin_version, 'string');
 });
 
-test('UserPromptSubmit -> prompt_submit carries the prompt', () => {
+test('UserPromptSubmit -> prompt_submit carries the prompt unlabelled', () => {
   const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'UserPromptSubmit', user_input: 'fix the parser' })));
   assertEnvelope(payload, 'prompt_submit');
   assert.strictEqual(payload.query, 'fix the parser');
@@ -73,7 +91,7 @@ test('PermissionRequest -> summary previews the command, tool_input is slimmed',
     tool_input: { command: 'rm -rf build', file_text: 'x'.repeat(50000) },
   })));
   assertEnvelope(payload, 'permission_request');
-  assert.strictEqual(payload.summary, 'Wants to run Bash: rm -rf build');
+  assert.strictEqual(payload.summary, 'my-project\nWants to run Bash: rm -rf build');
   assert.deepStrictEqual(payload.tool_input, { command: 'rm -rf build' });
 });
 
@@ -84,12 +102,12 @@ test('Notification(idle_prompt) -> idle_prompt carries the message', () => {
     message: 'Waiting for your input',
   })));
   assertEnvelope(payload, 'idle_prompt');
-  assert.strictEqual(payload.summary, 'Waiting for your input');
+  assert.strictEqual(payload.summary, 'my-project\nWaiting for your input');
 });
 
 test('Notification(idle_prompt) with no message falls back', () => {
   const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Notification', notification_type: 'idle_prompt' })));
-  assert.strictEqual(payload.summary, 'Input needed');
+  assert.strictEqual(payload.summary, 'my-project\nInput needed');
 });
 
 test('Stop -> stop carries the first line of the reply', () => {
@@ -98,8 +116,33 @@ test('Stop -> stop carries the first line of the reply', () => {
     last_assistant_message: '\n\nFirst line here.\nSecond line ignored.',
   })));
   assertEnvelope(payload, 'stop');
-  assert.strictEqual(payload.query, 'First line here.');
-  assert.strictEqual(payload.transcript_path, 'C:/t.jsonl');
+  assert.strictEqual(payload.query, 'my-project\nFirst line here.');
+});
+
+test('Stop labels the card with the session name from the transcript', () => {
+  const transcript_path = writeTranscript('named.jsonl', [aiTitle('Old name'), chatter(1), aiTitle('Warp 알림 설정'), chatter(2)]);
+  const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', transcript_path, last_assistant_message: 'Done.' })));
+  assert.strictEqual(payload.query, 'Warp 알림 설정\nDone.');
+});
+
+test('Stop finds the session name near the end of a multi-megabyte transcript', () => {
+  const filler = Array.from({ length: 20000 }, (_, i) => chatter(i));
+  const transcript_path = writeTranscript('huge.jsonl', [aiTitle('Buried too deep'), ...filler, aiTitle('Recent name'), chatter(0)]);
+  assert.ok(fs.statSync(transcript_path).size > 1024 * 1024, 'fixture must exceed the tail window');
+  const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', transcript_path, last_assistant_message: 'Done.' })));
+  assert.strictEqual(payload.query, 'Recent name\nDone.');
+});
+
+test('Stop falls back to the project when the transcript has no name yet', () => {
+  const transcript_path = writeTranscript('unnamed.jsonl', [chatter(1), chatter(2)]);
+  const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', transcript_path, last_assistant_message: 'Done.' })));
+  assert.strictEqual(payload.query, 'my-project\nDone.');
+});
+
+test('Stop ignores a half-written transcript line', () => {
+  const transcript_path = writeTranscript('torn.jsonl', [aiTitle('Good name'), '{"type":"ai-title","aiTitle":"tru']);
+  const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', transcript_path, last_assistant_message: 'Done.' })));
+  assert.strictEqual(payload.query, 'Good name\nDone.');
 });
 
 test('Stop survives a UTF-8 round trip', () => {
@@ -107,7 +150,7 @@ test('Stop survives a UTF-8 round trip', () => {
     hook_event_name: 'Stop',
     last_assistant_message: '한글이 깨지지 않는다.\n둘째 줄은 무시된다.',
   })));
-  assert.strictEqual(payload.query, '한글이 깨지지 않는다.');
+  assert.strictEqual(payload.query, 'my-project\n한글이 깨지지 않는다.');
 });
 
 test('Stop escapes control characters in the reply', () => {
@@ -116,13 +159,22 @@ test('Stop escapes control characters in the reply', () => {
     hook_event_name: 'Stop',
     last_assistant_message: `bell${BEL}and${ESC}escape`,
   })));
-  assert.strictEqual(payload.query, `bell${BEL}and${ESC}escape`);
+  assert.strictEqual(payload.query, `my-project\nbell${BEL}and${ESC}escape`);
 });
 
-test('Stop truncates past 200 characters', () => {
+test('Stop truncates the reply past 200 characters', () => {
   const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', last_assistant_message: 'x'.repeat(500) })));
-  assert.strictEqual(payload.query.length, 203);
-  assert.ok(payload.query.endsWith('...'));
+  const [, reply] = payload.query.split('\n');
+  assert.strictEqual(reply.length, 203);
+  assert.ok(reply.endsWith('...'));
+});
+
+test('a long session name is truncated', () => {
+  const transcript_path = writeTranscript('longname.jsonl', [aiTitle('n'.repeat(300))]);
+  const payload = payloadOf(run(Object.assign({}, base, { hook_event_name: 'Stop', transcript_path, last_assistant_message: 'Done.' })));
+  const [name] = payload.query.split('\n');
+  assert.strictEqual(name.length, 83);
+  assert.ok(name.endsWith('...'));
 });
 
 test('emits nothing outside Warp', () => {
@@ -158,5 +210,6 @@ for (const [name, fn] of tests) {
   }
 }
 
+fs.rmSync(tmp, { recursive: true, force: true });
 console.log(`\n${tests.length - failed}/${tests.length} passed`);
 process.exit(failed === 0 ? 0 : 1);
