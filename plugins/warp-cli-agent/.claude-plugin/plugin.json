@@ -1,0 +1,9 @@
+{
+  "name": "warp-cli-agent",
+  "description": "Warp 터미널에 Claude Code 세션 상태를 알린다 — 탭 상태 아이콘, 미확인 배지, \"Open Conversation\" 알림 카드. 공식 Warp 플러그인은 bash·jq·/dev/tty에 의존해 Windows에서 동작하지 않는다. 이 플러그인은 Claude Code의 terminalSequence 훅 출력과 Node 표준 라이브러리만 써서 macOS·Linux·Windows 모두에서 동작한다.",
+  "version": "0.1.0",
+  "author": {
+    "name": "CDDing"
+  },
+  "repository": "https://github.com/CDDing/dding-marketplace"
+}

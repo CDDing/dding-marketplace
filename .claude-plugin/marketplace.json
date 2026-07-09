@@ -17,6 +17,12 @@
       "source": "./plugins/superpower-validate",
       "description": "Adversarial spec/plan validation workflow (superpowers companion) — fan-out review across dimensions, 3-vote adversarial verification, PASS/FAIL verdict, web-checks external dependencies. Validates only; never authors. Generic and project-agnostic.",
       "version": "0.1.0"
+    },
+    {
+      "name": "warp-cli-agent",
+      "source": "./plugins/warp-cli-agent",
+      "description": "Warp terminal notifications for Claude Code that also work on Windows. Tab status icons, unread badges, and \"Open Conversation\" notification cards. Speaks Warp's warp://cli-agent OSC 777 protocol through Claude Code's terminalSequence hook output, so it needs no bash, no jq, and no /dev/tty.",
+      "version": "0.1.0"
     }
   ]
 }

@@ -236,6 +236,30 @@ The date is read from the first entry's `ts` field in `prompts.jsonl`, not from 
 
 ---
 
+### [warp-cli-agent](./plugins/warp-cli-agent)
+
+Warp 터미널에 Claude Code 세션 상태를 알린다 — 탭 상태 아이콘, 미확인 배지, "Open Conversation" 알림 카드.
+
+Warp 공식 플러그인은 `/dev/tty`·`jq`·bash에 의존해 [Windows에서 알림이 뜨지 않는다](https://github.com/warpdotdev/claude-code-warp/issues/2). 이 플러그인은 Claude Code의 `terminalSequence` 훅 출력과 Node 표준 라이브러리만 써서 macOS·Linux·Windows 모두에서 동작한다.
+
+#### Quick Start
+
+```bash
+/plugin install warp-cli-agent@dding-marketplace
+```
+
+설치 후 Claude Code를 재시작한다. 공식 `warp` 플러그인과 동시에 켜면 알림이 중복되므로 하나만 쓴다.
+
+#### Requirements
+
+- Claude Code v2.1.141 이상 (`terminalSequence` 훅 출력 필드)
+- Warp (`WARP_CLI_AGENT_PROTOCOL_VERSION`을 세팅하는 버전)
+- `node` (외부 패키지 없음)
+
+자세한 내용은 [플러그인 README](./plugins/warp-cli-agent/README.md) 참조.
+
+---
+
 ## License
 
 MIT
